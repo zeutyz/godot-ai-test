@@ -56,11 +56,13 @@ func _process(_delta: float) -> void:
 	var pending: int = terrain_manager.get_pending_chunk_count()
 	var vegetation_metrics: Dictionary = terrain_manager.get_vegetation_metrics()
 	var grass_count: int = int(vegetation_metrics["grass"])
+	var flower_count: int = int(vegetation_metrics["flowers"])
 	var tree_count: int = int(vegetation_metrics["trees"])
 	var crown_count: int = int(vegetation_metrics["crowns"])
+	var distant_canopies: int = int(vegetation_metrics["distant_canopies"])
 	var max_tree_height: float = float(vegetation_metrics["max_tree_height"])
 
-	_label.text = "mundo procedural\nchunk: %d, %d | ativos: %d | pend: %d | lod: %d/%d/%d\nbioma: %s\naltura: %.1f | umidade: %.2f | fluxo: %.2f\nveg: grama %d | arvores %d | copas %d | max %.1fm\n%.0f fps | proc %.2f ms | ram %.1f MB | normalY %.2f | load %.0f%%" % [
+	_label.text = "mundo procedural\nchunk: %d, %d | ativos: %d | pend: %d | lod: %d/%d/%d\nbioma: %s\naltura: %.1f | umidade: %.2f | fluxo: %.2f\nveg: grama %d | flores %d | arvores %d | copas %d/%d | max %.1fm\n%.0f fps | proc %.2f ms | ram %.1f MB | normalY %.2f | load %.0f%%" % [
 		center_coord.x,
 		center_coord.y,
 		active_chunks,
@@ -73,8 +75,10 @@ func _process(_delta: float) -> void:
 		moisture,
 		flow,
 		grass_count,
+		flower_count,
 		tree_count,
 		crown_count,
+		distant_canopies,
 		max_tree_height,
 		fps,
 		process_ms,

@@ -10,6 +10,7 @@ const TERRAIN_SHADER = preload("res://shaders/terrain_painterly.gdshader")
 @export var chunk_size: float = 64.0
 @export var chunk_resolution: int = 80
 @export var view_radius: int = 4
+@export var unload_radius: int = 6
 @export var height_scale: float = 34.0
 @export var seed: int = 481516
 @export var mid_lod_resolution: int = 40
@@ -29,11 +30,13 @@ var _status_message: String = "preparando mundo"
 var _normal_average_y: float = 1.0
 var _vegetation_metrics: Dictionary = {
 	"grass": 0,
+	"flowers": 0,
 	"trees": 0,
 	"crowns": 0,
 	"reeds": 0,
 	"bushes": 0,
 	"rocks": 0,
+	"distant_canopies": 0,
 	"max_tree_height": 0.0,
 }
 
@@ -75,14 +78,12 @@ func _update_streaming_center(world_position: Vector3) -> void:
 
 
 func _rebuild_visible_chunks(center_coord: Vector2i) -> void:
-	var needed: Dictionary = {}
 	_lod_counts = [0, 0, 0]
 	for z_offset: int in range(-view_radius, view_radius + 1):
 		for x_offset: int in range(-view_radius, view_radius + 1):
 			var coord: Vector2i = center_coord + Vector2i(x_offset, z_offset)
 			var lod_level: int = _lod_for_offset(x_offset, z_offset)
 			_lod_counts[lod_level] += 1
-			needed[coord] = true
 			if not _chunks.has(coord):
 				_queue_chunk(coord, lod_level)
 			elif int(_chunk_lods[coord]) != lod_level:
@@ -90,7 +91,7 @@ func _rebuild_visible_chunks(center_coord: Vector2i) -> void:
 
 	for key: Variant in _chunks.keys():
 		var coord_key: Vector2i = key as Vector2i
-		if not needed.has(coord_key):
+		if _chunk_distance(coord_key, center_coord) > unload_radius:
 			var chunk: Node = _chunks[coord_key] as Node
 			_chunks.erase(coord_key)
 			_chunk_lods.erase(coord_key)
@@ -163,6 +164,11 @@ func _lod_for_offset(x_offset: int, z_offset: int) -> int:
 	return 2
 
 
+func _chunk_distance(a: Vector2i, b: Vector2i) -> int:
+	var delta: Vector2i = a - b
+	return maxi(absi(delta.x), absi(delta.y))
+
+
 func _resolution_for_lod(lod_level: int) -> int:
 	if lod_level <= 0:
 		return chunk_resolution
@@ -215,9 +221,11 @@ func _accumulate_vegetation_metrics(vegetation: Node) -> void:
 
 	var metrics: Dictionary = vegetation.get_metrics()
 	_vegetation_metrics["grass"] = int(_vegetation_metrics["grass"]) + int(metrics["grass"])
+	_vegetation_metrics["flowers"] = int(_vegetation_metrics["flowers"]) + int(metrics["flowers"])
 	_vegetation_metrics["trees"] = int(_vegetation_metrics["trees"]) + int(metrics["trees"])
 	_vegetation_metrics["crowns"] = int(_vegetation_metrics["crowns"]) + int(metrics["crowns"])
 	_vegetation_metrics["reeds"] = int(_vegetation_metrics["reeds"]) + int(metrics["reeds"])
 	_vegetation_metrics["bushes"] = int(_vegetation_metrics["bushes"]) + int(metrics["bushes"])
 	_vegetation_metrics["rocks"] = int(_vegetation_metrics["rocks"]) + int(metrics["rocks"])
+	_vegetation_metrics["distant_canopies"] = int(_vegetation_metrics["distant_canopies"]) + int(metrics["distant_canopies"])
 	_vegetation_metrics["max_tree_height"] = maxf(float(_vegetation_metrics["max_tree_height"]), float(metrics["max_tree_height"]))

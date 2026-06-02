@@ -10,6 +10,7 @@ var chunk_size: float = 64.0
 var world_profile: RefCounted
 var seed: int = 0
 var lod_level: int = 0
+var _build_visuals: bool = true
 
 var _tree_material: ShaderMaterial
 var _trunk_material: ShaderMaterial
@@ -17,26 +18,32 @@ var _grass_material: ShaderMaterial
 var _reed_material: ShaderMaterial
 var _bush_material: ShaderMaterial
 var _rock_material: ShaderMaterial
+var _flower_material: ShaderMaterial
 var _metrics: Dictionary = {
 	"grass": 0,
+	"flowers": 0,
 	"trees": 0,
 	"crowns": 0,
 	"reeds": 0,
 	"bushes": 0,
 	"rocks": 0,
+	"distant_canopies": 0,
 	"max_tree_height": 0.0,
 }
 
 
-func setup(p_chunk_coord: Vector2i, p_chunk_size: float, p_world_profile: RefCounted, p_seed: int, p_lod_level: int) -> void:
+func setup(p_chunk_coord: Vector2i, p_chunk_size: float, p_world_profile: RefCounted, p_seed: int, p_lod_level: int, p_build_visuals: bool = true) -> void:
 	chunk_coord = p_chunk_coord
 	chunk_size = p_chunk_size
 	world_profile = p_world_profile
 	seed = p_seed
 	lod_level = p_lod_level
+	_build_visuals = p_build_visuals
 	position = Vector3.ZERO
-	_create_materials()
+	if _build_visuals:
+		_create_materials()
 	_build_grass()
+	_build_wildflowers()
 	_build_reeds()
 	_build_bushes()
 	_build_rocks()
@@ -49,6 +56,7 @@ func _create_materials() -> void:
 	_grass_material = _make_foliage_material(Color(0.35, 0.58, 0.19), 0.30, 0.82, 0.0)
 	_reed_material = _make_foliage_material(Color(0.46, 0.55, 0.24), 0.55, 0.82, 0.0)
 	_bush_material = _make_foliage_material(Color(0.31, 0.53, 0.24), 0.24, 0.48, 0.75)
+	_flower_material = _make_foliage_material(Color(0.72, 0.70, 0.38), 0.18, 0.72, 0.0)
 	_trunk_material = _make_solid_material(Color(0.40, 0.28, 0.17))
 	_rock_material = _make_solid_material(Color(0.43, 0.42, 0.38))
 
@@ -84,7 +92,43 @@ func _build_grass() -> void:
 				_append_grass_transform(transforms, x_index, z_index, layer_salt, local_x, local_z)
 
 	_metrics["grass"] = transforms.size()
-	_create_multimesh("GrassTufts", _make_grass_mesh(), _grass_material, transforms)
+	if _build_visuals:
+		_create_multimesh("GrassTufts", _make_grass_mesh(), _grass_material, transforms)
+
+
+func _build_wildflowers() -> void:
+	var transforms: Array[Transform3D] = []
+	var cell_count: int = _scaled_cell_count(24)
+	var cell_size: float = chunk_size / float(cell_count)
+
+	for z_index: int in range(cell_count):
+		for x_index: int in range(cell_count):
+			var local_x: float = (float(x_index) + _hash_unit(x_index, z_index, 503)) * cell_size
+			var local_z: float = (float(z_index) + _hash_unit(x_index, z_index, 509)) * cell_size
+			var world_x: float = _chunk_world_x() + local_x
+			var world_z: float = _chunk_world_z() + local_z
+			var sample: Dictionary = world_profile.sample_world(world_x, world_z)
+			var biome: int = int(sample["biome"])
+			var slope: float = float(sample["slope"])
+			var fertility: float = float(sample["fertility"])
+			var moisture: float = float(sample["moisture"])
+			if slope > 0.34:
+				continue
+			if biome != WORLD_PROFILE_SCRIPT.Biome.MEADOW and biome != WORLD_PROFILE_SCRIPT.Biome.HIGHLAND:
+				continue
+			if _hash_unit(x_index, z_index, 521) > fertility * 0.42 + moisture * 0.18:
+				continue
+
+			var height: float = float(sample["height"])
+			var scale_y: float = (0.12 + _hash_unit(x_index, z_index, 523) * 0.16) * 0.35
+			var scale_xz: float = (0.18 + _hash_unit(x_index, z_index, 541) * 0.14) * 0.45
+			var basis: Basis = Basis(Vector3.UP, _hash_unit(x_index, z_index, 547) * TAU)
+			basis = basis.scaled(Vector3(scale_xz, scale_y, scale_xz))
+			transforms.append(Transform3D(basis, Vector3(local_x, height + 0.05, local_z)))
+
+	_metrics["flowers"] = transforms.size()
+	if _build_visuals:
+		_create_multimesh("Wildflowers", _make_flower_mesh(), _flower_material, transforms)
 
 
 func _append_grass_transform(transforms: Array[Transform3D], x_index: int, z_index: int, salt: int, local_x: float, local_z: float) -> void:
@@ -104,8 +148,8 @@ func _append_grass_transform(transforms: Array[Transform3D], x_index: int, z_ind
 	if _hash_unit(x_index, z_index, salt + 19) > 0.76 + fertility * 0.24:
 		return
 
-	var scale_y: float = 0.18 + moisture * 0.34 + _hash_unit(x_index, z_index, salt + 11) * 0.30
-	var scale_xz: float = 0.50 + _hash_unit(x_index, z_index, salt + 13) * 0.30
+	var scale_y: float = (0.18 + moisture * 0.30 + _hash_unit(x_index, z_index, salt + 11) * 0.22) * 0.25
+	var scale_xz: float = (0.50 + _hash_unit(x_index, z_index, salt + 13) * 0.26) * 0.30
 	var basis: Basis = Basis(Vector3.UP, _hash_unit(x_index, z_index, salt + 17) * TAU)
 	basis = basis.scaled(Vector3(scale_xz, scale_y, scale_xz))
 	transforms.append(Transform3D(basis, Vector3(local_x, height + 0.04, local_z)))
@@ -134,7 +178,8 @@ func _build_reeds() -> void:
 			transforms.append(Transform3D(basis, Vector3(local_x, height + 0.1, local_z)))
 
 	_metrics["reeds"] = transforms.size()
-	_create_multimesh("Reeds", _make_grass_mesh(), _reed_material, transforms)
+	if _build_visuals:
+		_create_multimesh("Reeds", _make_grass_mesh(), _reed_material, transforms)
 
 
 func _build_bushes() -> void:
@@ -167,7 +212,8 @@ func _build_bushes() -> void:
 			transforms.append(Transform3D(basis, Vector3(local_x, height + 0.55 * bush_scale, local_z)))
 
 	_metrics["bushes"] = transforms.size()
-	_create_multimesh("Bushes", _make_bush_mesh(), _bush_material, transforms)
+	if _build_visuals:
+		_create_multimesh("Bushes", _make_bush_mesh(), _bush_material, transforms)
 
 
 func _build_rocks() -> void:
@@ -206,7 +252,8 @@ func _build_rocks() -> void:
 			transforms.append(Transform3D(basis, Vector3(local_x, height + 0.25 * rock_scale, local_z)))
 
 	_metrics["rocks"] = transforms.size()
-	_create_multimesh("Rocks", _make_rock_mesh(), _rock_material, transforms)
+	if _build_visuals:
+		_create_multimesh("Rocks", _make_rock_mesh(), _rock_material, transforms)
 
 
 func _build_trees() -> void:
@@ -239,12 +286,13 @@ func _build_trees() -> void:
 				continue
 
 			var tree_scale: float = 0.85 + _hash_unit(x_index, z_index, 53) * 0.85
-			var trunk_height: float = 10.5 + tree_scale * 7.5 + fertility * 4.5
-			var crown_height: float = 7.0 + tree_scale * 4.2
-			var crown_width: float = 5.8 + tree_scale * 3.8
+			var trunk_height: float = 15.0 + tree_scale * 5.5 + fertility * 4.5
+			var crown_height: float = 7.5 + tree_scale * 4.4
+			var crown_width: float = 6.6 + tree_scale * 4.0
 			max_tree_height = maxf(max_tree_height, trunk_height + crown_height)
 			var yaw: float = _hash_unit(x_index, z_index, 59) * TAU
-			var trunk_basis: Basis = Basis(Vector3.UP, yaw).scaled(Vector3(0.9 * tree_scale, trunk_height, 0.9 * tree_scale))
+			var trunk_radius: float = 1.0 + _hash_unit(x_index, z_index, 67) * 0.5
+			var trunk_basis: Basis = Basis(Vector3.UP, yaw).scaled(Vector3(trunk_radius, trunk_height, trunk_radius))
 			trunk_transforms.append(Transform3D(trunk_basis, Vector3(local_x, height + trunk_height * 0.5, local_z)))
 
 			for crown_index: int in range(3):
@@ -263,8 +311,9 @@ func _build_trees() -> void:
 	_metrics["trees"] = trunk_transforms.size()
 	_metrics["crowns"] = leaf_transforms.size()
 	_metrics["max_tree_height"] = max_tree_height
-	_create_multimesh("TreeTrunks", _make_trunk_mesh(), _trunk_material, trunk_transforms)
-	_create_multimesh("TreeCrowns", _make_crown_mesh(), _tree_material, leaf_transforms)
+	if _build_visuals:
+		_create_multimesh("TreeTrunks", _make_trunk_mesh(), _trunk_material, trunk_transforms)
+		_create_multimesh("TreeCrowns", _make_crown_mesh(), _tree_material, leaf_transforms)
 
 
 func _build_distant_canopy_hints() -> void:
@@ -294,7 +343,9 @@ func _build_distant_canopy_hints() -> void:
 			basis = basis.scaled(Vector3(scale * 1.4, scale * 0.95, scale * 1.4))
 			transforms.append(Transform3D(basis, Vector3(local_x, height + scale * 2.0, local_z)))
 
-	_create_multimesh("DistantCanopyHints", _make_crown_mesh(), _tree_material, transforms)
+	_metrics["distant_canopies"] = transforms.size()
+	if _build_visuals:
+		_create_multimesh("DistantCanopyHints", _make_crown_mesh(), _tree_material, transforms)
 
 
 func get_metrics() -> Dictionary:
@@ -302,6 +353,8 @@ func get_metrics() -> Dictionary:
 
 
 func _create_multimesh(node_name: String, source_mesh: Mesh, material: Material, transforms: Array[Transform3D]) -> void:
+	if not _build_visuals:
+		return
 	if transforms.is_empty():
 		return
 
@@ -343,6 +396,18 @@ func _make_grass_mesh() -> Mesh:
 		surface_tool.add_vertex(d)
 		surface_tool.add_vertex(c)
 		surface_tool.add_vertex(a)
+	surface_tool.generate_normals()
+	return surface_tool.commit()
+
+
+func _make_flower_mesh() -> Mesh:
+	var surface_tool: SurfaceTool = SurfaceTool.new()
+	surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for plane_index: int in range(2):
+		var yaw: float = float(plane_index) * PI * 0.5
+		var right: Vector3 = Vector3(cos(yaw), 0.0, sin(yaw)) * 0.28
+		var up: Vector3 = Vector3(0.0, 1.0, 0.0)
+		_add_leaf_quad(surface_tool, -right, right, right * 0.55 + up, -right * 0.55 + up)
 	surface_tool.generate_normals()
 	return surface_tool.commit()
 
